@@ -5,16 +5,59 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
 
-    <script defer src="./index.js"></script>
+    <script type="module" src="./index.js"></script>
 
     <style>
         :root {
             color-scheme: light dark;
+            margin-inline: auto;
+            max-width: 80ch;
         }
+
+        #search-results {
+            display: flex;
+            flex-flow: column;
+            max-height: 50vh;
+            overflow: auto;
+            gap: 1em;
+            padding: .5em;
+            
+            & > span {
+                cursor: pointer;
+                padding: .25em .5em;
+                --bg: gray;
+                --selected: rgb(0, 119, 255);
+                background: rgba(from var(--bg) r g b / 0.15);
+
+                &#selected {
+                    border-left: thick solid var(--selected);
+                    --bg: var(--selected);
+                }
+                & > span {
+                    color: gray;
+                }
+            }
+        }
+
+        #book-search {
+            width: 100%;
+            font-size: 125%;
+            padding: .5em .75em;
+            background: transparent;
+            border: thin solid gray;
+        }
+
     </style>
 </head>
 <body>
-    <div id="law">
+    <input type="search" id="book-search" autocomplete="off">
+
+    <div id="search-results">
+
+    </div>
+    <h2>Lawbook</h2>
+    <h3>Long Title</h3>
+    <div id="law" tabindex="0">
         <h4>Titel</h4>
         <div id="body"></div>
     </div>
