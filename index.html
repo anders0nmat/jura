@@ -10,8 +10,61 @@
     <style>
         :root {
             color-scheme: light dark;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+
+        body {
+            display: grid;
+            grid-template: 
+                "toc search pinned" max-content
+                "toc  main  pinned" 1fr 
+                / 1fr 3fr 1fr;
+            gap: .25em;
+            max-width: 120ch;
             margin-inline: auto;
+            margin-block: 0;
+        }
+
+        main {
             max-width: 80ch;
+            margin-block: .5em;
+            grid-area: main;
+        }
+
+        aside {
+            max-height: 100vh;
+            overflow: auto;
+            position: sticky;
+            top: 0;
+        }
+
+        aside ul {
+            list-style-type: none;
+            padding: .25em .5em;
+            margin: 0;
+            --selected: rgb(0, 119, 255);
+
+            & > li {
+                margin-block: .25em;
+                padding-block: .25em;
+                padding-inline: .25em;
+                background: rgba(from var(--bg) r g b / 0.15);
+                border-left: thick solid transparent;
+            }
+        }
+
+        li > a {
+            color: currentColor;
+            text-decoration: none;
+            display: block;
+        }
+
+        aside:has(> #toc) {
+            grid-area: toc;
+        }
+
+        aside:has(> #pinned) {
+            grid-area: pinned;
         }
 
         #search-results {
@@ -22,44 +75,90 @@
             gap: 1em;
             padding: .5em;
             
-            & > span {
-                cursor: pointer;
+            div > a {
                 padding: .25em .5em;
                 --bg: gray;
                 --selected: rgb(0, 119, 255);
                 background: rgba(from var(--bg) r g b / 0.15);
+                color: currentColor;
+                text-decoration: none;
+                border-left: thick solid transparent;
 
                 &#selected {
                     border-left: thick solid var(--selected);
                     --bg: var(--selected);
                 }
                 & > span {
+                    margin-left: 1ch;
                     color: gray;
                 }
             }
+        }
+
+        .selected {
+            border-left: thick solid var(--selected);
+            --bg: var(--selected);
         }
 
         #book-search {
             width: 100%;
             font-size: 125%;
             padding: .5em .75em;
+            margin-top: .5em;
             background: transparent;
             border: thin solid gray;
+            appearance: none;
+            grid-area: search;
+        }
+
+        #lawbooks::before {
+            content: "Gesetzbücher";
+            font-size: 85%;
+            font-variant: small-caps;
+            color: gray;
+        }
+
+        .search-group {
+            display: contents;
+
+            &:empty {
+                display: none;
+            }
+        }
+
+        #law {
+            dl {
+                display: grid;
+                grid-template-columns: max-content auto;
+                gap: 1em;
+            }
+
+            dd {
+                margin: 0;
+            }
         }
 
     </style>
 </head>
 <body>
+    <aside>
+        <ul id="toc"></ul>
+    </aside>
     <input type="search" id="book-search" autocomplete="off">
-
-    <div id="search-results">
-
-    </div>
-    <h2>Lawbook</h2>
-    <h3>Long Title</h3>
-    <div id="law" tabindex="0">
-        <h4>Titel</h4>
-        <div id="body"></div>
-    </div>
+    <main>
+        <div id="search-results">
+            <div id="laws" class="search-group"></div>
+            <div id="lawbooks" class="search-group"></div>
+        </div>
+        <h2>Lawbook</h2>
+        <h3>Long Title</h3>
+        <div id="law" tabindex="0">
+            <h4>Titel</h4>
+            <div id="body"></div>
+        </div>
+    </main>
+    <aside>
+        <ul id="pinned"></ul>
+    </aside>
 </body>
 </html>

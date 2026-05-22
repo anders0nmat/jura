@@ -73,18 +73,53 @@ function enableCors(url: string) {
     return `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`
 }
 
+const CACHE = await caches.open('v1')
+async function fetchCached(request: RequestInfo | URL) {
+    const cachedResponse = await CACHE.match(request)
+    if (cachedResponse) {
+        const cachedAt = cachedResponse.headers.get('X-Cached-At')
+        const cachedAge = Date.now() - Date.parse(cachedAt ?? '0')
+        const MAX_AGE = 7 * 24 * 60 * 60 * 1000
+        if (cachedAge < MAX_AGE) {
+            console.log(`Cache hit for ${request}`)
+            return cachedResponse
+        }
+    }
+    console.log(`Cache miss for ${request}`)
+
+    const response = await fetch(request)
+    const responseBody = await response.arrayBuffer()
+    const res = new Response(responseBody, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: {
+            ...response.headers,
+            'X-Cached-At': new Date().toISOString(),
+        }
+    })
+    CACHE.put(request, res.clone())
+    return res
+}
+
 const lawbooks: [string, string, string][] = []
 const law = document.getElementById('law')!
 const lawbook = document.querySelector('h2')!
 const lawbookLong = document.querySelector('h3')!
 const search = document.querySelector<HTMLInputElement>('#book-search')!
 const searchResults = document.querySelector<HTMLElement>('#search-results')!
+const searchLaws = searchResults.querySelector<HTMLElement>('#laws')!
+const searchLawbooks = searchResults.querySelector<HTMLElement>('#lawbooks')!
+const toc = document.querySelector<HTMLElement>('#toc')!
+const pinned = document.querySelector<HTMLElement>('#pinned')!
 let active_book: Law
 let active_law = 0
 
 
+let pinnedLaws: {book: string, index: number, title: string}[] = JSON.parse(localStorage.getItem('pinned') ?? '[]')
+
+
 async function load_books() {
-    const response = await fetch(enableCors('https://gadi.netlify.app/'))
+    const response = await fetchCached(enableCors('https://gadi.netlify.app/'))
 
     if (!response.ok) {
         return
@@ -102,12 +137,26 @@ async function load_books() {
 }
 
 async function load_law(slug: string) {
-    const response = await fetch(enableCors('https://gadi.netlify.app/laws/' + slug + '.json'))
+    const response = await fetchCached(enableCors('https://gadi.netlify.app/laws/' + slug + '.json'))
     const json = await response.json()
     active_book = json.data
     active_book.contents = active_book.contents.filter(e => e.type == "article")
     active_law = 0
+    display_lawbook()
     display_law()
+}
+
+function display_lawbook() {
+    toc.replaceChildren()
+
+    active_book.contents.forEach((e, idx) => {
+        const li = document.createElement('li')
+        const a = document.createElement('a')
+        a.textContent = e.name + (e.title ? ' ' + e.title : '')
+        a.href = `#${active_book.slug}-${idx}`
+        li.append(a)
+        toc.append(li)
+    })
 }
 
 function display_law() {
@@ -124,113 +173,223 @@ function display_law() {
         lawbook.textContent = `${active_book.titleLong} (${active_book.abbreviation})`
         lawbookLong.style.display = 'none'
     }
+
+    toc.querySelectorAll('.selected').forEach(e => e.classList.remove('selected'))
+    const tocElement = toc.querySelector(`[href$="-${active_law}"]`)
+    tocElement?.parentElement?.classList.add('selected')
+    tocElement?.scrollIntoView({
+        'block': 'nearest',
+    })
+
+    pinned.querySelectorAll('.selected').forEach(e => e.classList.remove('selected'))
+    pinned.querySelectorAll(`[href^="#${active_book.slug}-"][href$="-${active_law}"]`).forEach(e => e.parentElement?.classList.add('selected'))
+    pinned.querySelector('.selected')?.scrollIntoView({
+        'block': 'nearest',
+    })
+}
+
+function display_pinned() {
+    pinned.replaceChildren()
+
+    pinnedLaws.forEach(e => {
+        const li = document.createElement('li')
+        const a = document.createElement('a')
+        a.textContent = e.title
+        a.href = `#${e.book}-${e.index}`
+        if (active_book.slug == e.book && active_law == e.index) {
+            li.classList.add('selected')
+        }
+        li.append(a)
+        pinned.append(li)
+    })
+}
+
+function pin_law() {
+    const book = active_book.slug
+    const index = active_law
+    const law = active_book.contents[active_law]
+
+    const pinnedIndex = pinnedLaws.findIndex(e => e.book == book && e.index == index)
+    if (pinnedIndex < 0) {
+        pinnedLaws.push({
+            book,
+            index,
+            title: `${active_book.abbreviation} ${law.name}` + (law.title ? ' ' + law.title : '')
+        })
+    }
+    else {
+        pinnedLaws.splice(pinnedIndex, 1)
+    }
+
+    localStorage.setItem('pinned', JSON.stringify(pinnedLaws))
+    display_pinned()
+}
+
+async function load_hash() {
+    const parts = location.hash.substring(1).split('-', 2) ?? ['gg', '0']
+    const book = parts[0]
+    const index = parseInt(parts[1])
+
+    if (!active_book || active_book.slug !== book) {
+        await load_law(book)
+    }
+    active_law = index
+    display_law()
+
+    search.value = ''
+    search.blur()
+    searchLaws.replaceChildren()
+    searchLawbooks.replaceChildren()
 }
 
 
 
 load_books()
-await load_law('gg')
+
+window.addEventListener('hashchange', load_hash)
+
+if (!location.hash) {
+    location.assign('#gg-0')
+}
+await load_hash()
+display_pinned()
+
+
 
 document.addEventListener('keydown', e => {
     if (e.defaultPrevented) { return }
     if (e.target instanceof HTMLInputElement) { return }
 
     if (e.key.length == 1) {
-        search.value = ''
+        e.preventDefault()
+        search.value = e.key
         search.focus()
+        search.dispatchEvent(new Event('input'))
     }
 
     if (e.key == "ArrowLeft") {
-        active_law -= 1
-        if (active_law < 0) {
-            active_law = 0
+        if (e.ctrlKey) {
+            const current = pinned.querySelector('.selected')
+
+            current?.classList.remove('selected')
+            if (current?.previousElementSibling) {
+                current.previousElementSibling.classList.add('selected')
+            }
+            else {
+                pinned.lastElementChild?.classList.add('selected')
+            }
         }
-        display_law()
+        else {   
+            location.assign(`#${active_book.slug}-${Math.max(active_law - 1, 0)}`)
+        }
     }
 
     if (e.key == "ArrowRight") {
-        const m = active_book.contents.length
-        active_law += 1
-        if (active_law >= m) {
-            active_law = m - 1
+        if (e.ctrlKey) {
+            const current = pinned.querySelector('.selected')
+
+            current?.classList.remove('selected')
+            if (current?.nextElementSibling) {
+                current.nextElementSibling.classList.add('selected')
+            }
+            else {
+                pinned.firstElementChild?.classList.add('selected')
+            }
         }
-        display_law()
+        else {
+            location.assign(`#${active_book.slug}-${Math.min(active_law + 1, active_book.contents.length - 1)}`)
+        }
+    }
+
+    if (e.key == "Enter") {
+        pin_law()
+    }
+
+    if (e.key == "Escape" && e.ctrlKey) {
+        pinned.querySelector('.selected')?.classList.remove('selected')
+    }
+})
+
+document.addEventListener('keyup', async e => {
+    if (e.key == "Control") {
+        const current = pinned.querySelector<HTMLAnchorElement>('.selected > a')
+        if (current) {
+            location.assign(current.href)
+        }
+        else {
+            display_law()
+        }
     }
 })
 
 search.addEventListener('input', debounce(_ => {
     const value = search.value.toLowerCase()
 
-    searchResults.replaceChildren()
+    searchLaws.replaceChildren()
+    searchLawbooks.replaceChildren()
 
     if (!value) { return }
 
-    const priorities = new Map<number, HTMLElement[]>()
-
     // Is there some matching lawitem in the current book?
-    active_book.contents.forEach((e, idx) => {
-        let score = 0
-        if (e.name.toLowerCase().includes(value)) {
-            score += 1
-        }
-
-        if (e.name.match(`\b${RegExp.escape(value)}\b}`)) {
-            score += 100
-        }
-
-        if (score > 0) {
-            const li = document.createElement('span')
-            li.textContent = e.name + ' ' + (e.title ?? '')
-            li.dataset.index = idx.toString()
-            if (!priorities.has(-score)) {
-                priorities.set(-score, [])
+    active_book.contents
+        .map((e, idx): [number, HTMLElement] | null => {
+            let score = 0
+            if (e.name.toLowerCase().includes(value)) {
+                score += 1
             }
-            priorities.get(-score)?.push(li)
-        }
-    })
+
+            if (e.name.match(`\b${RegExp.escape(value)}\b}`)) {
+                score += 100
+            }
+
+            if (score > 0) {
+                const a = document.createElement('a')
+                a.textContent = e.name + ' ' + (e.title ?? '')
+                a.href = `#${active_book.slug}-${idx}`
+                return [score, a]
+            }
+            return null
+        })
+        .filter(e => e !== null)
+        .sort(([a, _], [b, _2]) => b - a)
+        .forEach(([_, e]) => searchLaws.append(e))
 
     // is there a matching law book?
-    lawbooks.forEach(e => {
-        let score = 0
-        const content = e[0].toLowerCase() + ' ' + e[1].toLowerCase()
-        if (content.includes(value)) {
-            score += 1
-        }
-        if (value && content.startsWith(value)) {
-            score += 10
-        }
-
-        if (score > 0) {
-            const li = document.createElement('span')
-            li.textContent = e[0]
-            if (e[1]) {
-                const li2 = document.createElement('span')
-                li2.textContent = e[1]
-                li.append(li2)
+    lawbooks
+        .map((e): [number, HTMLElement] | null => {
+            let score = 0
+            const content = e[0].toLowerCase() + ' ' + e[1].toLowerCase()
+            if (content.includes(value)) {
+                score += 1
             }
-            li.dataset.slug = e[2]
-
-            if (!priorities.has(score)) {
-                priorities.set(score, [])
+            if (value && content.startsWith(value)) {
+                score += 10
             }
-            priorities.get(score)?.push(li)
-        }
-    })
 
-    const prioClass = Array.from(priorities.keys()).sort((a, b) => {
-        const aPos = a < 0 ? 0 : 1
-        const bPos = b < 0 ? 0 : 1
-        if (aPos !== bPos) { return aPos - bPos}
+            if (score > 0) {
+                const a = document.createElement('a')
+                a.textContent = e[0]
+                if (e[1]) {
+                    const span = document.createElement('span')
+                    span.textContent = e[1]
+                    a.append(span)
+                }
+                a.href = `#${e[2]}-0`
 
-        return Math.abs(b) - Math.abs(a)
-    })
+                return [score, a]
+            }
+            return null
+        })
+        .filter(e => e !== null)
+        .sort(([a, _], [b, _2]) => b - a)
+        .slice(0, 10)
+        .forEach(([_, e]) => searchLawbooks.append(e))
 
-    prioClass.forEach(prio => {
-        searchResults.append(...priorities.get(prio)!)
-    })
-
-    if (searchResults.firstElementChild) {
-        searchResults.firstElementChild.id = 'selected'
+    if (searchLaws.firstElementChild) {
+        searchLaws.firstElementChild.id = 'selected'
+    }
+    else if (searchLawbooks.firstElementChild) {
+        searchLawbooks.firstElementChild.id = 'selected'
     }
 }, 100))
 
@@ -243,11 +402,20 @@ search.addEventListener('keydown', e => {
             if (sel.nextElementSibling) {
                 sel.nextElementSibling.id = 'selected'
             }
+            else if (sel.parentElement?.nextElementSibling?.firstElementChild) {
+                sel.parentElement.nextElementSibling.firstElementChild.id = 'selected'
+            }
+            else if (sel.parentElement?.previousElementSibling?.firstElementChild) {
+                sel.parentElement.previousElementSibling.firstElementChild.id = 'selected'
+            }
             else {
                 // end of list
-                searchResults.firstElementChild!.id = 'selected'
+                sel.parentElement!.firstElementChild!.id = 'selected'
             }
         }
+        searchResults.querySelector<HTMLElement>('#selected')?.scrollIntoView({
+            'block': 'nearest',
+        })
     }
 
     if (e.key == "ArrowUp") {
@@ -258,28 +426,27 @@ search.addEventListener('keydown', e => {
             if (sel.previousElementSibling) {
                 sel.previousElementSibling.id = 'selected'
             }
+            else if (sel.parentElement?.previousElementSibling?.lastElementChild) {
+                sel.parentElement.previousElementSibling.lastElementChild.id = 'selected'
+            }
+            else if (sel.parentElement?.nextElementSibling?.lastElementChild) {
+                sel.parentElement.nextElementSibling.lastElementChild.id = 'selected'
+            }
             else {
                 // end of list
-                searchResults.lastElementChild!.id = 'selected'
+                sel.parentElement!.lastElementChild!.id = 'selected'
             }
         }
+
+        searchResults.querySelector<HTMLElement>('#selected')?.scrollIntoView({
+            'block': 'nearest',
+        })
     }
 
     if (e.key == "Enter") {
-        const sel = searchResults.querySelector<HTMLElement>('#selected')
+        const sel = searchResults.querySelector<HTMLAnchorElement>('#selected')
         if (sel) {
-            if ('index' in sel.dataset) {
-                active_law = parseInt(sel.dataset.index!)
-                display_law()
-                search.blur()
-            }
-            else if ('slug' in sel.dataset) {
-                load_law(sel.dataset.slug!).then(_ => {
-                    active_law = 0
-                    display_law()
-                    search.blur()
-                })
-            }
+            location.assign(sel.href)
         }
     }
 
@@ -288,8 +455,4 @@ search.addEventListener('keydown', e => {
     }
 })
 
-search.addEventListener('blur', _ => {
-    search.value = ''
-    searchResults.replaceChildren()
-})
 
