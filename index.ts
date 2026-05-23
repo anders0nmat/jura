@@ -103,12 +103,13 @@ async function fetchCached(request: RequestInfo | URL) {
 
 const lawbooks: [string, string, string][] = []
 const law = document.getElementById('law')!
-const lawbook = document.querySelector('h2')!
+const lawbook = document.querySelector('#law-title')!
 const lawbookLong = document.querySelector('h3')!
 const search = document.querySelector<HTMLInputElement>('#book-search')!
 const searchResults = document.querySelector<HTMLElement>('#search-results')!
 const searchLaws = searchResults.querySelector<HTMLElement>('#laws')!
 const searchLawbooks = searchResults.querySelector<HTMLElement>('#lawbooks')!
+const searchGroups = Array.from(searchResults.querySelectorAll<HTMLElement>('.search-group'))
 const toc = document.querySelector<HTMLElement>('#toc')!
 const pinned = document.querySelector<HTMLElement>('#pinned')!
 let active_book: Law
@@ -391,26 +392,46 @@ search.addEventListener('input', debounce(_ => {
     else if (searchLawbooks.firstElementChild) {
         searchLawbooks.firstElementChild.id = 'selected'
     }
+
+    
+    searchResults.querySelector<HTMLElement>('#selected')?.scrollIntoView({
+        'block': 'nearest',
+    })
 }, 100))
+
+function getGroup(current: HTMLElement, advance: number): HTMLElement {
+    const idx = searchGroups.findIndex(e => e === current)
+    if (idx < 0) {
+        return current
+    }
+    const wrap = (x: number) => 
+        x < 0
+            ? searchGroups.length - 1
+            : x >= searchGroups.length
+                ? 0
+                : x
+
+    for (let i = wrap(idx + advance); i !== idx; i = wrap(i + advance)) {
+        const nextElement = searchGroups[i]
+        if (nextElement.childElementCount > 0) {
+            return nextElement
+        }
+    }
+    return current
+}
 
 search.addEventListener('keydown', e => {
     if (e.key == "ArrowDown") {
         e.preventDefault()
         const sel = searchResults.querySelector<HTMLElement>('#selected')
         if (sel) {
+            const nextGroup = getGroup(sel.parentElement!, 1)
             sel.id = ''
             if (sel.nextElementSibling) {
                 sel.nextElementSibling.id = 'selected'
             }
-            else if (sel.parentElement?.nextElementSibling?.firstElementChild) {
-                sel.parentElement.nextElementSibling.firstElementChild.id = 'selected'
-            }
-            else if (sel.parentElement?.previousElementSibling?.firstElementChild) {
-                sel.parentElement.previousElementSibling.firstElementChild.id = 'selected'
-            }
-            else {
-                // end of list
-                sel.parentElement!.firstElementChild!.id = 'selected'
+            else if (nextGroup.firstElementChild) {
+                nextGroup.firstElementChild.id = 'selected'
             }
         }
         searchResults.querySelector<HTMLElement>('#selected')?.scrollIntoView({
@@ -422,19 +443,13 @@ search.addEventListener('keydown', e => {
         e.preventDefault()
         const sel = searchResults.querySelector<HTMLElement>('#selected')
         if (sel) {
+            const nextGroup = getGroup(sel.parentElement!, -1)
             sel.id = ''
             if (sel.previousElementSibling) {
                 sel.previousElementSibling.id = 'selected'
             }
-            else if (sel.parentElement?.previousElementSibling?.lastElementChild) {
-                sel.parentElement.previousElementSibling.lastElementChild.id = 'selected'
-            }
-            else if (sel.parentElement?.nextElementSibling?.lastElementChild) {
-                sel.parentElement.nextElementSibling.lastElementChild.id = 'selected'
-            }
-            else {
-                // end of list
-                sel.parentElement!.lastElementChild!.id = 'selected'
+            else if (nextGroup.lastElementChild) {
+                nextGroup.lastElementChild.id = 'selected'
             }
         }
 

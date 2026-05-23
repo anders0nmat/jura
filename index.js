@@ -45,12 +45,13 @@ async function fetchCached(request) {
 }
 const lawbooks = [];
 const law = document.getElementById('law');
-const lawbook = document.querySelector('h2');
+const lawbook = document.querySelector('#law-title');
 const lawbookLong = document.querySelector('h3');
 const search = document.querySelector('#book-search');
 const searchResults = document.querySelector('#search-results');
 const searchLaws = searchResults.querySelector('#laws');
 const searchLawbooks = searchResults.querySelector('#lawbooks');
+const searchGroups = Array.from(searchResults.querySelectorAll('.search-group'));
 const toc = document.querySelector('#toc');
 const pinned = document.querySelector('#pinned');
 let active_book;
@@ -291,25 +292,40 @@ search.addEventListener('input', debounce(_ => {
     else if (searchLawbooks.firstElementChild) {
         searchLawbooks.firstElementChild.id = 'selected';
     }
+    searchResults.querySelector('#selected')?.scrollIntoView({
+        'block': 'nearest',
+    });
 }, 100));
+function getGroup(current, advance) {
+    const idx = searchGroups.findIndex(e => e === current);
+    if (idx < 0) {
+        return current;
+    }
+    const wrap = (x) => x < 0
+        ? searchGroups.length - 1
+        : x >= searchGroups.length
+            ? 0
+            : x;
+    for (let i = wrap(idx + advance); i !== idx; i = wrap(i + advance)) {
+        const nextElement = searchGroups[i];
+        if (nextElement.childElementCount > 0) {
+            return nextElement;
+        }
+    }
+    return current;
+}
 search.addEventListener('keydown', e => {
     if (e.key == "ArrowDown") {
         e.preventDefault();
         const sel = searchResults.querySelector('#selected');
         if (sel) {
+            const nextGroup = getGroup(sel.parentElement, 1);
             sel.id = '';
             if (sel.nextElementSibling) {
                 sel.nextElementSibling.id = 'selected';
             }
-            else if (sel.parentElement?.nextElementSibling?.firstElementChild) {
-                sel.parentElement.nextElementSibling.firstElementChild.id = 'selected';
-            }
-            else if (sel.parentElement?.previousElementSibling?.firstElementChild) {
-                sel.parentElement.previousElementSibling.firstElementChild.id = 'selected';
-            }
-            else {
-                // end of list
-                sel.parentElement.firstElementChild.id = 'selected';
+            else if (nextGroup.firstElementChild) {
+                nextGroup.firstElementChild.id = 'selected';
             }
         }
         searchResults.querySelector('#selected')?.scrollIntoView({
@@ -320,19 +336,13 @@ search.addEventListener('keydown', e => {
         e.preventDefault();
         const sel = searchResults.querySelector('#selected');
         if (sel) {
+            const nextGroup = getGroup(sel.parentElement, -1);
             sel.id = '';
             if (sel.previousElementSibling) {
                 sel.previousElementSibling.id = 'selected';
             }
-            else if (sel.parentElement?.previousElementSibling?.lastElementChild) {
-                sel.parentElement.previousElementSibling.lastElementChild.id = 'selected';
-            }
-            else if (sel.parentElement?.nextElementSibling?.lastElementChild) {
-                sel.parentElement.nextElementSibling.lastElementChild.id = 'selected';
-            }
-            else {
-                // end of list
-                sel.parentElement.lastElementChild.id = 'selected';
+            else if (nextGroup.lastElementChild) {
+                nextGroup.lastElementChild.id = 'selected';
             }
         }
         searchResults.querySelector('#selected')?.scrollIntoView({
