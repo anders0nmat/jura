@@ -15,7 +15,11 @@ function debounce(func, wait, immediate = false) {
     };
 }
 function enableCors(url) {
-    return `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`;
+    // return `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`
+    // return `https://cors-anywhere.com/${url}`
+    // return `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+    // return `https://goxcors.appspot.com/cors?method=GET&url=${encodeURIComponent(url)}`
+    return `https://cors.io/?url=${url}`;
 }
 const CACHE = await caches.open('v1');
 async function fetchCached(request) {
@@ -62,7 +66,9 @@ async function load_books() {
     if (!response.ok) {
         return;
     }
-    const bodyHtml = await response.text();
+    const responseJson = await response.json();
+    //const bodyHtml = await response.text()
+    const bodyHtml = responseJson.body;
     const parser = new DOMParser();
     const doc = parser.parseFromString(bodyHtml, 'text/html');
     doc.querySelectorAll('main ul:nth-of-type(2) li a').forEach(e => {
@@ -73,7 +79,9 @@ async function load_books() {
 }
 async function load_law(slug) {
     const response = await fetchCached(enableCors('https://gadi.netlify.app/laws/' + slug + '.json'));
-    const json = await response.json();
+    const responseJson = await response.json();
+    //const json = await response.json()
+    const json = JSON.parse(responseJson.body);
     active_book = json.data;
     active_book.contents = active_book.contents.filter(e => e.type == "article");
     active_law = 0;
